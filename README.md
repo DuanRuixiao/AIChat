@@ -1,4 +1,4 @@
-# AI Agent - ChatGPT-like Chat Assistant
+# AIChatAgent - ChatGPT-like Chat Assistant
 
 A modern, full-stack AI chat application built with React frontend and Python FastAPI backend, powered by OpenAI's GPT API. Features a beautiful, responsive UI with real-time messaging capabilities.
 
@@ -54,7 +54,7 @@ A modern, full-stack AI chat application built with React frontend and Python Fa
 ## 📁 Project Structure
 
 ```
-ai-agent/
+AIChatAgent/
 ├── client/                 # React frontend
 │   ├── src/
 │   │   ├── App.js         # Main React component

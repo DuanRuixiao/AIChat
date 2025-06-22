@@ -1,5 +1,5 @@
 {
-  "name": "ai-agent-client",
+  "name": "AIChatAgent-client",
   "version": "0.1.0",
   "private": true,
   "dependencies": {

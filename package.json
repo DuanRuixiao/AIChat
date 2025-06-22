@@ -1,5 +1,5 @@
 {
-  "name": "ai-agent",
+  "name": "AIChatAgent",
   "version": "1.0.0",
   "description": "A ChatGPT-like AI agent with modern UI",
   "main": "server/main.py",
