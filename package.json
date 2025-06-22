@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently \"npm run server:dev\" \"npm run client\"",
     "server": "cd server && python3 main.py",
-    "server:dev": "cd server && ../venv/bin/uvicorn main:app --reload --host 0.0.0.0 --port 3001",
+    "server:dev": "cd server && ../venv/bin/python -m uvicorn main:app --reload --host 0.0.0.0 --port 3001",
     "client": "cd client && npm start",
     "build": "cd client && npm run build",
     "install-all": "npm install && cd client && npm install && pip3 install -r requirements.txt"
