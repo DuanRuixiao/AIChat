@@ -4,7 +4,6 @@ from fastapi.responses import JSONResponse
 import json
 import asyncio
 import random
-import httpx
 from typing import Dict, List
 import os
 from dotenv import load_dotenv
@@ -28,12 +27,6 @@ app.add_middleware(
 
 # Initialize OpenAI client
 client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY", "your-api-key-here"))
-
-# AI Service Configuration
-AI_SERVICE = os.getenv("AI_SERVICE", "ollama")  # Options: "openai", "ollama", "huggingface"
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama2")  # or "mistral", "codellama", etc.
-HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY", "")
 
 # Mock AI responses for when quota is exceeded
 mock_responses = [
@@ -60,14 +53,14 @@ class ChatMessage(BaseModel):
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "OK", "message": "AI Agent is running", "ai_service": AI_SERVICE}
+    return {"status": "OK", "message": "AI Agent is running", "ai_service": "openai"}
 
 @app.post("/api/chat")
 async def chat_endpoint(chat_data: ChatMessage):
     """REST API endpoint for chat"""
     try:
         # Get AI response
-        ai_response = await get_ai_response(chat_data.message)
+        ai_response = await get_openai_response(chat_data.message)
         
         return {
             "message": ai_response,
@@ -77,74 +70,6 @@ async def chat_endpoint(chat_data: ChatMessage):
     except Exception as e:
         print(f"Error in chat endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
-
-async def get_ai_response(user_message: str) -> str:
-    """Get AI response from configured AI service"""
-    try:
-        if AI_SERVICE == "ollama":
-            return await get_ollama_response(user_message)
-        elif AI_SERVICE == "huggingface":
-            return await get_huggingface_response(user_message)
-        elif AI_SERVICE == "openai":
-            return await get_openai_response(user_message)
-        else:
-            # Fallback to mock response
-            mock_response = random.choice(mock_responses)
-            return f"{mock_response}\n\n[Note: Using demo mode. Configure AI_SERVICE in .env]"
-            
-    except Exception as e:
-        print(f"AI service error: {e}")
-        # Fallback to mock response for any error
-        mock_response = random.choice(mock_responses)
-        return f"{mock_response}\n\n[Note: Using demo mode due to AI service error.]"
-
-async def get_ollama_response(user_message: str) -> str:
-    """Get response from Ollama (local AI)"""
-    try:
-        async with httpx.AsyncClient() as http_client:
-            response = await http_client.post(
-                f"{OLLAMA_BASE_URL}/api/generate",
-                json={
-                    "model": OLLAMA_MODEL,
-                    "prompt": f"You are a helpful AI assistant. Be concise, friendly, and helpful in your responses.\n\nUser: {user_message}\nAssistant:",
-                    "stream": False
-                },
-                timeout=30.0
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                return result.get("response", "I'm sorry, I couldn't generate a response.")
-            else:
-                raise Exception(f"Ollama API error: {response.status_code}")
-                
-    except Exception as e:
-        print(f"Ollama error: {e}")
-        raise e
-
-async def get_huggingface_response(user_message: str) -> str:
-    """Get response from Hugging Face Inference API"""
-    if not HUGGINGFACE_API_KEY:
-        raise Exception("Hugging Face API key not configured")
-        
-    try:
-        async with httpx.AsyncClient() as http_client:
-            response = await http_client.post(
-                "https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium",
-                headers={"Authorization": f"Bearer {HUGGINGFACE_API_KEY}"},
-                json={"inputs": user_message},
-                timeout=30.0
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                return result[0].get("generated_text", "I'm sorry, I couldn't generate a response.")
-            else:
-                raise Exception(f"Hugging Face API error: {response.status_code}")
-                
-    except Exception as e:
-        print(f"Hugging Face error: {e}")
-        raise e
 
 async def get_openai_response(user_message: str) -> str:
     """Get response from OpenAI"""
@@ -210,8 +135,8 @@ async def websocket_endpoint(websocket: WebSocket):
             }))
             
             try:
-                # Get AI response
-                ai_response = await get_ai_response_with_context(client_id, user_message)
+                # Get AI response with conversation context
+                ai_response = await get_openai_response_with_context(client_id, user_message)
                 
                 # Add AI response to conversation history
                 conversations[client_id].append({
@@ -257,64 +182,36 @@ async def websocket_endpoint(websocket: WebSocket):
         if client_id in conversations:
             del conversations[client_id]
 
-async def get_ai_response_with_context(client_id: str, user_message: str) -> str:
-    """Get AI response with conversation context"""
+async def get_openai_response_with_context(client_id: str, user_message: str) -> str:
+    """Get OpenAI response with conversation context"""
     try:
-        if AI_SERVICE == "ollama":
-            # For Ollama, we'll send the full conversation context
-            conversation_history = conversations[client_id][-10:]  # Last 10 messages
-            context = "\n".join([f"{msg['role']}: {msg['content']}" for msg in conversation_history])
-            context += f"\nuser: {user_message}\nassistant:"
-            
-            async with httpx.AsyncClient() as http_client:
-                response = await http_client.post(
-                    f"{OLLAMA_BASE_URL}/api/generate",
-                    json={
-                        "model": OLLAMA_MODEL,
-                        "prompt": f"You are a helpful AI assistant. Be concise, friendly, and helpful in your responses.\n\n{context}",
-                        "stream": False
-                    },
-                    timeout=30.0
-                )
-                
-                if response.status_code == 200:
-                    result = response.json()
-                    return result.get("response", "I'm sorry, I couldn't generate a response.")
-                else:
-                    raise Exception(f"Ollama API error: {response.status_code}")
-                    
-        elif AI_SERVICE == "openai":
-            # Prepare conversation history for OpenAI
-            messages = [
-                {
-                    "role": "system",
-                    "content": "You are a helpful AI assistant. Be concise, friendly, and helpful in your responses."
-                }
-            ]
-            
-            # Add conversation history (last 10 messages to avoid token limits)
-            conversation_history = conversations[client_id][-10:]
-            messages.extend(conversation_history)
-            
-            # Add current user message
-            messages.append({
-                "role": "user",
-                "content": user_message
-            })
-            
-            # Try OpenAI
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=messages,
-                max_tokens=500,
-                temperature=0.7,
-            )
-            
-            return response.choices[0].message.content
-            
-        else:
-            # For other services, just get a simple response
-            return await get_ai_response(user_message)
+        # Prepare conversation history for OpenAI
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a helpful AI assistant. Be concise, friendly, and helpful in your responses."
+            }
+        ]
+        
+        # Add conversation history (last 10 messages to avoid token limits)
+        conversation_history = conversations[client_id][-10:]
+        messages.extend(conversation_history)
+        
+        # Add current user message
+        messages.append({
+            "role": "user",
+            "content": user_message
+        })
+        
+        # Get response from OpenAI
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            max_tokens=500,
+            temperature=0.7,
+        )
+        
+        return response.choices[0].message.content
         
     except RateLimitError:
         # Use mock response when quota is exceeded
@@ -322,7 +219,7 @@ async def get_ai_response_with_context(client_id: str, user_message: str) -> str
         return f"{mock_response}\n\n[Note: Using demo mode due to quota limit.]"
         
     except Exception as e:
-        print(f"AI service error: {e}")
+        print(f"OpenAI error: {e}")
         # Fallback to mock response for any other error
         mock_response = random.choice(mock_responses)
         return f"{mock_response}\n\n[Note: Using demo mode due to service error.]"
